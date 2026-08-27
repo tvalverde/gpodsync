@@ -1,0 +1,10 @@
+# Runner image for local workflow runs. Pinned here so `act` never has to ask,
+# and so everyone running it locally exercises the same environment.
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# Mount the real working directory instead of copying it in. act's default copy
+# arrives without a .git, which does not merely skip the audit's tracked-file
+# checks — it makes them pass having examined nothing. The workflow keeps its
+# writes out of the tree (see the env block in ci.yml) so sharing it is safe.
+--bind
+--rm

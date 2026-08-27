@@ -1,0 +1,55 @@
+# Separate from ci.yml on purpose.
+#
+# ci.yml is fully reproducible with `act` before pushing, and that promise is
+# worth keeping intact. This job builds and runs the real image, which act can
+# only manage with docker-in-docker — so rather than quietly weakening the claim,
+# the part act cannot reach lives in its own file. Run it locally with
+# `make test-acceptance`, which is what this calls.
+
+name: Acceptance
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: acceptance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      VENV: /tmp/gpodsync-venv
+      RUFF_CACHE_DIR: /tmp/gpodsync-ruff
+      MYPY_CACHE_DIR: /tmp/gpodsync-mypy
+      COVERAGE_FILE: /tmp/gpodsync-coverage
+      PYTEST_ADDOPTS: -p no:cacheprovider
+      PYTHONPYCACHEPREFIX: /tmp/gpodsync-pycache
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: make venv
+
+      # The fake AntennaPod against the published image, in the shape the
+      # documentation recommends: unprivileged, read-only, no capabilities.
+      - name: Acceptance tests
+        run: make test-acceptance
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker ps -a && docker logs $(docker ps -aq --filter name=gpodsync-acceptance | head -1) || true

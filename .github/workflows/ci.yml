@@ -1,0 +1,108 @@
+# Wiring, not logic. Every step below is a make target, so what CI runs is what
+# runs locally and a green pipeline cannot mean something different from a green
+# `make check`.
+#
+# This workflow is expected to be run under `act` before being pushed — see
+# `make ci-local`. Everything here is within what act can reproduce; the parts it
+# cannot (OIDC signing, multi-arch QEMU builds, the registry push) live in the
+# release workflow instead, deliberately kept thin for that reason.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege by default. The release workflow widens this for itself alone.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Everything this job writes goes outside the repository. On GitHub that is
+    # merely tidy; locally it is what makes `act --bind` safe, since the container
+    # shares the real working directory and would otherwise leave root-owned
+    # virtualenvs and caches behind in it.
+    env:
+      VENV: /tmp/gpodsync-venv
+      RUFF_CACHE_DIR: /tmp/gpodsync-ruff
+      MYPY_CACHE_DIR: /tmp/gpodsync-mypy
+      COVERAGE_FILE: /tmp/gpodsync-coverage
+      PYTEST_ADDOPTS: -p no:cacheprovider
+      # Without this, importing the package writes __pycache__ directories
+      # into the source tree — which under `act --bind` means root-owned
+      # directories left behind in the real working copy.
+      PYTHONPYCACHEPREFIX: /tmp/gpodsync-pycache
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # No job here pushes anything; leaving a usable token in .git/config
+          # only widens what a compromised dependency could reach.
+          persist-credentials: false
+          # The whole history. Both the audit's history sweep and the secret
+          # scanner read commits, and the default depth of 1 gives them one to
+          # look at — a clean result that examined almost nothing, which is the
+          # failure this project keeps finding in its own gates.
+          fetch-depth: 0
+
+      # uv installs the interpreter too, so there is no separate setup-python
+      # action to pin, update and trust.
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: make venv
+
+      # First, because it is the check that protects a public repository from a
+      # private string, and because a gate that cannot fail is not a gate.
+      - name: Prove the privacy gate fails when it should
+        run: make audit-self-test
+
+      # Two forms on purpose. On a pull request the secret is absent — forks
+      # cannot read it, and an outside contributor has none of these strings to
+      # leak anyway — so the substring check degrades to the structural checks by
+      # design. Everywhere else --require-list makes that same degradation a hard
+      # failure, because a renamed or deleted secret would otherwise disable the
+      # check permanently behind a green pipeline.
+      - name: Audit
+        env:
+          AUDIT_FORBIDDEN_STRINGS: ${{ secrets.AUDIT_FORBIDDEN_STRINGS }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            scripts/audit.sh --tree
+          else
+            scripts/audit.sh --tree --require-list
+            scripts/audit.sh --history --require-list
+          fi
+
+      - name: Scan for credentials of any shape
+        run: make secret-scan
+
+      - name: Lint
+        run: make lint
+
+      - name: Types
+        run: make typecheck
+
+      - name: Django's own deployment checks
+        run: make check-deploy
+
+      - name: Unit tests
+        run: make test-unit
+
+      - name: Component tests
+        run: make test-component
+
+      # The acceptance layer joins this list once there is a container to run it
+      # against. A step running an empty suite reports success and proves nothing.

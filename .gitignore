@@ -1,0 +1,40 @@
+# Deployment configuration. These describe a specific server and must never be
+# committed: the repository is public and git history is permanent.
+.env
+.env.*
+!.env.example
+compose.production.yaml
+compose.override.yaml
+
+# Data. The database holds password hashes and session keys.
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+/data/
+/backups/
+
+# A global gitignore may exclude this; some do. It is not a local artefact — it is
+# what keeps the published image's build context fail-closed, so it has to be in
+# the repository. A repository .gitignore takes precedence over core.excludesFile,
+# which is what makes this line work.
+!.dockerignore
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Tooling
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors
+.idea/
+.vscode/
+*.swp

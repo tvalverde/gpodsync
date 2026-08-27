@@ -1,0 +1,22 @@
+# Development and test dependencies. Never installed into the published image.
+#
+# A constraint, not a requirement: the two files are compiled separately, so
+# `-r` would let a shared dependency resolve to one version here and another
+# there. `-c` pins development to whatever the runtime already settled on.
+-c requirements.txt
+-r requirements.in
+
+pytest>=9.1
+pytest-django>=4.14
+pytest-cov>=7.1
+coverage>=7.15
+
+mypy>=2.3
+django-stubs>=6.1
+
+ruff>=0.16
+
+# Drives the fake AntennaPod used by the acceptance suite. Its cookie handling is
+# replaced with a stricter policy that mirrors the Java client's, so this is only
+# the transport.
+requests>=2.34

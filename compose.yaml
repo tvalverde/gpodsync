@@ -1,0 +1,38 @@
+# Local development: build from this checkout, serve over plain http, keep the
+# data in a named volume so a rebuild does not lose the account you just made.
+#
+# The production stack lives outside this repository — see .env.deploy.
+
+services:
+  gpodsync:
+    build: .
+    environment:
+      GPODSYNC_ALLOWED_HOSTS: localhost,127.0.0.1
+      GPODSYNC_SECRET_KEY: development-only-not-a-real-key
+      GPODSYNC_SESSION_COOKIE_SECURE: "false"
+      GPODSYNC_TRACE_REQUESTS: "true"
+      GPODSYNC_BOOTSTRAP_USER: "${GPODSYNC_BOOTSTRAP_USER:-}"
+      GPODSYNC_BOOTSTRAP_PASSWORD: "${GPODSYNC_BOOTSTRAP_PASSWORD:-}"
+    volumes:
+      - gpodsync-dev-data:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+    # The recommended shape: no privileges to drop, so nothing needs the
+    # capabilities that dropping them would require. The image ships /data owned
+    # by this user, so a fresh volume inherits it.
+    user: "10001:10001"
+
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  gpodsync-dev-data:

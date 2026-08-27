@@ -1,0 +1,325 @@
+# Publishing the image.
+#
+# Deliberately thin, because this is the part `act` cannot reproduce: keyless
+# signing needs an OIDC identity provider, and multi-architecture builds under
+# QEMU are too slow locally to be worth reaching for. Everything that can be
+# logic lives in a make target that ci.yml already runs; what is left here is
+# wiring and the two gates that must happen in this order — verify the image,
+# then publish it.
+#
+# workflow_dispatch defaults to a dry run so the first real execution can be a
+# deliberate rehearsal rather than a surprise on a tag.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  schedule:
+    # Monthly, so a published image keeps receiving base-image and dependency
+    # patches even when the application has not changed. For an image other
+    # people run, maintenance cadence matters more than the initial version.
+    #
+    # GitHub disables scheduled workflows after sixty days without activity in
+    # the repository, so on a quiet project this promise switches itself off. Worth
+    # checking when a month goes by with no rebuild.
+    - cron: "0 4 1 * *"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Actually push and sign (otherwise build and verify only)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never cancel a release in flight: a half-pushed manifest is worse than a queued
+# one. A tag push landing while the monthly rebuild runs would otherwise have the
+# two competing for the same tags.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  # What the monthly rebuild is *for* is shipping base-image and dependency
+  # patches for the released version. Left to the default ref it would build the
+  # tip of main — commits nobody released — and push them as `latest`, while the
+  # version tags kept the patches they were supposed to be receiving. So the
+  # schedule resolves the newest release tag and every job below builds that.
+  resolve:
+    name: Resolve the ref to build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ref: ${{ steps.pick.outputs.ref }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            ref=$(git tag -l 'v*' --sort=-v:refname | head -1)
+            if [ -z "$ref" ]; then
+              echo "No release tag exists yet; there is nothing to rebuild." >&2
+              exit 1
+            fi
+          else
+            ref="${{ github.ref_name }}"
+          fi
+          echo "Building $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+  gate:
+    needs: resolve
+    name: Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VENV: /tmp/gpodsync-venv
+      RUFF_CACHE_DIR: /tmp/gpodsync-ruff
+      MYPY_CACHE_DIR: /tmp/gpodsync-mypy
+      COVERAGE_FILE: /tmp/gpodsync-coverage
+      PYTEST_ADDOPTS: -p no:cacheprovider
+      PYTHONPYCACHEPREFIX: /tmp/gpodsync-pycache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+          # The whole history, because the sweep below reads every object in it.
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          enable-cache: true
+
+      - run: make venv
+
+      - name: Prove the privacy gate fails when it should
+        run: make audit-self-test
+
+      # --require-list, so a renamed or deleted secret stops the release instead
+      # of quietly turning the substring check into a no-op behind a green run.
+      #
+      # Rehearsing this with `act` cannot prove that: act binds the working
+      # directory, so the untracked .env.deploy is visible and the audit finds a
+      # list without ever consulting the secret. The guarantee is covered by
+      # audit.sh --self-test, which every pipeline runs first.
+      - name: Audit the tree and the whole history
+        env:
+          AUDIT_FORBIDDEN_STRINGS: ${{ secrets.AUDIT_FORBIDDEN_STRINGS }}
+        run: |
+          scripts/audit.sh --tree --require-list
+          scripts/audit.sh --history --require-list
+
+      - name: Scan for credentials of any shape
+        run: make secret-scan
+
+      - run: make lint
+      - run: make typecheck
+      - run: make test-unit
+      - run: make test-component
+
+      - name: Django's own deployment checks
+        run: make check-deploy
+
+  verify-image:
+    name: Verify the image
+    needs: [resolve, gate]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      VENV: /tmp/gpodsync-venv
+      PYTEST_ADDOPTS: -p no:cacheprovider
+      PYTHONPYCACHEPREFIX: /tmp/gpodsync-pycache
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          enable-cache: true
+
+      - run: make venv
+
+      # A single architecture, loaded locally, so the audit and the acceptance
+      # suite have something real to run against. The multi-architecture build
+      # happens after this passes — auditing an image that has already been
+      # pushed would be a review of something the world already has.
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
+
+      - name: Build for verification
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        with:
+          context: .
+          load: true
+          tags: gpodsync:acceptance
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Audit the image itself
+        env:
+          AUDIT_FORBIDDEN_STRINGS: ${{ secrets.AUDIT_FORBIDDEN_STRINGS }}
+        run: scripts/audit.sh --tree --image gpodsync:acceptance --require-list
+
+      # Against the image just audited, not a fresh build of it. The suite
+      # normally builds its own; told the image is already there, it refuses to
+      # replace it — otherwise the audit would have examined one set of bits and
+      # the suite exercised another.
+      - name: Acceptance tests against the audited image
+        run: make test-acceptance-prebuilt
+
+  publish:
+    name: Publish
+    needs: [resolve, verify-image]
+    # A manual dispatch from a branch cannot produce a version tag, so buildx
+    # would fail at the push with "tag is needed" after logging in. Say so up
+    # front instead.
+    if: |
+      (github.event_name == 'push' && github.ref_type == 'tag')
+      || github.event_name == 'schedule'
+      || (github.event_name == 'workflow_dispatch' && inputs.publish
+          && github.ref_type == 'tag')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      # Keyless signing: the identity comes from this run rather than from a key
+      # somebody has to store and rotate.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.ref }}
+          persist-credentials: false
+
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8  # v4.2.0
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e  # v4.3.0
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          # `value=` so a scheduled run derives its version from the tag being
+          # rebuilt rather than from the branch it was triggered on.
+          #
+          # No raw `latest` rule: the default flavour adds it for a stable semver
+          # tag and deliberately withholds it for a prerelease. Adding one back
+          # would have moved `latest` onto the first release candidate anybody
+          # pushed.
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.resolve.outputs.ref }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.resolve.outputs.ref }}
+
+      # Pushed by digest and *without* tags, so nothing is reachable by a name
+      # anybody pulls until it has been exercised. The tags are created from the
+      # digest afterwards, once both architectures have actually run.
+      - id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,push=true
+          cache-from: type=gha
+          # Both attestations, so somebody pulling this can ask what went into it
+          # and where it was built without taking our word for either.
+          provenance: mode=max
+          sbom: true
+
+      # The arm64 half had never been run by anything: cross-compiled under QEMU,
+      # tagged, signed and shipped without one process ever having started. This
+      # is not the full acceptance suite — that ran on amd64 a job ago — but it
+      # answers the question that half had never been asked.
+      - name: Start each architecture once
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for platform in linux/amd64 linux/arm64; do
+            echo "::group::$platform"
+
+            # The digest above names the multi-platform index, and `docker run`
+            # refuses to take a digest and a --platform together — the digest
+            # already identifies one manifest, so the flag would contradict it.
+            # So resolve the digest of the manifest for this platform and run
+            # that. The select also drops the provenance and SBOM manifests,
+            # which the index carries with a platform of unknown/unknown.
+            digest=$(docker buildx imagetools inspect "$REF" --format '{{json .Manifest}}' \
+              | jq -er --arg p "$platform" '
+                  .manifests[]
+                  | select((.platform.os + "/" + .platform.architecture) == $p)
+                  | .digest')
+
+            id=$(docker run -d \
+              -e GPODSYNC_ALLOWED_HOSTS=gpodder.example.com \
+              -e GPODSYNC_SECRET_KEY=smoke-test-only \
+              "$IMAGE@$digest")
+            # Long enough to outlast the image's own start period, which under
+            # emulation is the slow part.
+            for _ in $(seq 1 80); do
+              state=$(docker inspect --format '{{.State.Health.Status}}' "$id" || echo gone)
+              [ "$state" = "healthy" ] && break
+              if [ "$state" = "unhealthy" ] || [ "$state" = "gone" ]; then
+                docker logs "$id" || true
+                echo "$platform never became healthy" >&2
+                exit 1
+              fi
+              sleep 3
+            done
+            [ "$state" = "healthy" ] || { docker logs "$id"; exit 1; }
+            docker rm -f "$id" >/dev/null
+            echo "::endgroup::"
+          done
+
+      - name: Give it its tags
+        env:
+          REF: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          args=""
+          for tag in $TAGS; do args="$args -t $tag"; done
+          # shellcheck disable=SC2086
+          docker buildx imagetools create $args "$REF"
+
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+
+      - name: Sign the image
+        # By digest, never by tag: a tag can be moved to point at something else,
+        # and a signature over a moving target says nothing. --recursive so each
+        # per-platform manifest carries its own signature rather than only the
+        # index that points at them.
+        run: cosign sign --yes --recursive "${IMAGE}@${DIGEST}"
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - name: Say how to verify it
+        run: |
+          echo "Published ${IMAGE}@${DIGEST}"
+          echo
+          echo "Verify with:"
+          echo "  cosign verify ${IMAGE}@${DIGEST} \\"
+          echo "    --certificate-identity-regexp '^https://github\\.com/${{ github.repository }}/\\.github/workflows/release\\.yml@' \\"
+          echo "    --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+        env:
+          IMAGE: ${{ env.IMAGE }}
+          DIGEST: ${{ steps.build.outputs.digest }}

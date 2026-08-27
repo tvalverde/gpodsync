@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+#
+# Versioned in the repository and activated with `make setup`, which points
+# core.hooksPath here — so there is no separate hook framework to install and no
+# per-clone copying step to forget.
+#
+# Staged diff only. A full tree-and-image sweep on every commit takes long enough
+# that it would end up bypassed with --no-verify, and a check people route around
+# protects nothing. The full sweep runs in CI.
+
+scripts/audit.sh --self-test || exit 1
+scripts/audit.sh --staged || exit 1
+
+# The generic scanner too, on the staged content. `gitleaks git` reads history,
+# so without --staged the first time it could notice a credential is after the
+# commit exists — and by this project's own doctrine the history is permanent
+# from that moment.
+exec scripts/secret-scan.sh --staged

@@ -1,0 +1,57 @@
+# A starting point for running gpodsync yourself. Copy it, edit the marked
+# values, and put a TLS-terminating reverse proxy in front of it.
+
+services:
+  gpodsync:
+    image: ghcr.io/tvalverde/gpodsync:latest
+    restart: unless-stopped
+
+    environment:
+      GPODSYNC_ALLOWED_HOSTS: gpodder.example.com      # <- yours
+      # No secret key here, and no file secret either. Compose bind-mounts a file
+      # secret with the host's ownership — its uid/gid/mode attributes are
+      # Swarm-only — so a key file readable by you is unreadable by the container's
+      # own unprivileged user, and it refuses to start. This was found by
+      # deploying this very file.
+      #
+      # Left unset, the application mints a key on first start and keeps it in
+      # /data, which already belongs to that user. Set GPODSYNC_SECRET_KEY
+      # explicitly if you would rather manage it yourself — just never let it
+      # change between restarts, which signs everyone out and looks like a broken
+      # password.
+      GPODSYNC_BEHIND_PROXY: "true"                    # <- false if nothing is in front
+
+      # Set false ONLY when serving over plain http on a LAN. AntennaPod will not
+      # send a Secure cookie back over http, so leaving this true on an http
+      # deployment gives you a login that works and nothing else that does.
+      GPODSYNC_SESSION_COOKIE_SECURE: "true"
+
+    volumes:
+      - gpodsync-data:/data
+
+    ports:
+      - "127.0.0.1:8000:8000"    # bound to loopback; the proxy reaches it, the internet does not
+
+    # The application writes to /data and to /tmp, and needs nothing else.
+    # The recommended shape: no privileges to drop, so nothing needs the
+    # capabilities that dropping them would require. The image ships /data owned
+    # by this user, so a fresh volume inherits it.
+    user: "10001:10001"
+
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+    # Docker's json-file driver does not rotate by default. With tracing on, a
+    # request full of junk would otherwise fill the disk one log line at a time.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  gpodsync-data:

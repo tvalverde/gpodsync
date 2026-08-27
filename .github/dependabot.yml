@@ -1,0 +1,19 @@
+# Actions are pinned by commit SHA, which stops a tag from being moved under us
+# but also freezes them until something deliberately moves them forward. A pin
+# with no updater is not security, it is rot with a good reputation.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly

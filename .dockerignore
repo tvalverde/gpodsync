@@ -1,0 +1,19 @@
+# An allowlist, not a blocklist. Everything is excluded and only what the image
+# genuinely needs is added back.
+#
+# A blocklist fails open: the day someone adds a file holding a hostname or a key,
+# it ships inside a published layer unless a pattern happened to anticipate it. An
+# allowlist fails closed — a new file is absent from the build until someone names
+# it here, and a missing file breaks the build loudly rather than leaking quietly.
+*
+
+!gpodsync/
+!manage.py
+!requirements.txt
+!docker-entrypoint.sh
+
+# Re-exclude anything that could ride along inside the directories above.
+**/__pycache__/
+**/*.py[cod]
+**/.env*
+**/*.sqlite3*

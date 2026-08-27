@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>gpodsync</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 44 44'%3E%3Ccircle cx='22' cy='30' r='4.5' fill='%23d95b12'/%3E%3Ccircle cx='22' cy='30' r='13' fill='none' stroke='%23d95b12' stroke-width='2.5' opacity='.55'/%3E%3Ccircle cx='22' cy='30' r='20' fill='none' stroke='%23d95b12' stroke-width='2.5' opacity='.3'/%3E%3C/svg%3E">
+</head>
+<body>
+<style>
+  :root {
+    --ground: #faf6f0;
+    --ink: #2a221a;
+    --muted: #77695c;
+    --accent: #d95b12;
+    --accent-ink: #ffffff;
+    --card: #ffffff;
+    --line: #e7ddd1;
+    --code-bg: #f3ece2;
+    --ok: #3d8b4f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #171210;
+      --ink: #ece3d8;
+      --muted: #9c8c7c;
+      --accent: #f07a33;
+      --accent-ink: #1b120b;
+      --card: #201914;
+      --line: #322822;
+      --code-bg: #2a211a;
+      --ok: #5cae6e;
+    }
+  }
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .mono {
+    font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+
+  main {
+    max-width: 37rem;
+    margin: 0 auto;
+    padding: 4.5rem 1.5rem 3rem;
+  }
+
+  /* --- wordmark --- */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .rings {
+    flex: none;
+    width: 44px;
+    height: 44px;
+  }
+  .rings circle.wave {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    transform-origin: 22px 30px;
+    animation: broadcast 3.2s ease-out infinite;
+    opacity: 0;
+  }
+  .rings circle.wave:nth-child(2) { animation-delay: 1.06s; }
+  .rings circle.wave:nth-child(3) { animation-delay: 2.13s; }
+  .rings circle.dot { fill: var(--accent); }
+  @keyframes broadcast {
+    0%   { transform: scale(0.35); opacity: 0; }
+    12%  { opacity: 0.9; }
+    100% { transform: scale(1.15); opacity: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rings circle.wave { animation: none; opacity: 0.5; transform: none; }
+  }
+
+  h1 {
+    font-size: 2rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  h1 .sync { color: var(--accent); }
+
+  .thesis {
+    font-size: 1.0625rem;
+    color: var(--muted);
+    max-width: 32rem;
+    margin: 0 0 3rem;
+    text-wrap: balance;
+  }
+  .thesis strong { color: var(--ink); font-weight: 600; }
+
+  /* --- sections --- */
+  .eyebrow {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    margin: 0 0 1rem;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 1.75rem 1.75rem 1.5rem;
+    margin-bottom: 3rem;
+  }
+
+  ol.steps {
+    list-style: none;
+    counter-reset: step;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  ol.steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 2rem 1fr;
+    gap: 0.9rem;
+    align-items: baseline;
+  }
+  ol.steps li::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: ui-monospace, "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.8125rem;
+    color: var(--muted);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  ol.steps .path {
+    color: var(--muted);
+  }
+  ol.steps .path b {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  code.host {
+    display: inline-block;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.15rem 0.55rem;
+    font-size: 0.9375rem;
+    color: var(--accent);
+    word-break: break-all;
+  }
+
+  .note {
+    margin: 1.4rem 0 0;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--line);
+    font-size: 0.875rem;
+    color: var(--muted);
+  }
+
+  /* --- facts --- */
+  dl.facts {
+    margin: 0;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 1.5rem;
+    row-gap: 0.55rem;
+    font-size: 0.9375rem;
+  }
+  dl.facts dt {
+    color: var(--muted);
+    font-size: 0.8125rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    align-self: baseline;
+    padding-top: 0.1rem;
+  }
+  dl.facts dd { margin: 0; }
+
+  /* --- footer --- */
+  footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem 1.4rem;
+    border-top: 1px solid var(--line);
+    padding-top: 1.25rem;
+    font-size: 0.8125rem;
+    color: var(--muted);
+  }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+  }
+  .status .light {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--muted);
+    opacity: 0.5;
+  }
+  .status.ok .light { background: var(--ok); opacity: 1; }
+  .spacer { flex: 1; }
+  footer a {
+    color: var(--muted);
+    text-decoration: none;
+    border-bottom: 1px solid var(--line);
+  }
+  footer a:hover, footer a:focus-visible {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    outline: none;
+  }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<main>
+  <header>
+    <svg class="rings" viewBox="0 0 44 44" aria-hidden="true">
+      <circle class="wave" cx="22" cy="30" r="17"></circle>
+      <circle class="wave" cx="22" cy="30" r="17"></circle>
+      <circle class="wave" cx="22" cy="30" r="17"></circle>
+      <circle class="dot" cx="22" cy="30" r="4.5"></circle>
+    </svg>
+    <h1 class="mono">gpod<span class="sync">sync</span></h1>
+  </header>
+
+  <p class="thesis">
+    A small, self-hosted podcast sync server, compatible with the
+    gpodder.net API and built to work — <strong>reliably</strong> — with AntennaPod.
+    Your subscriptions and listening positions, on every device, on your own machine.
+  </p>
+
+  <section class="card">
+    <p class="eyebrow">Connect AntennaPod</p>
+    <ol class="steps">
+      <li>
+        <div class="path">Open <b>Settings&nbsp;→ Synchronization</b> and choose
+        <b>gpodder.net</b> as the provider.</div>
+      </li>
+      <li>
+        <div class="path">Set the server to
+        <code class="host mono" id="host">this host</code></div>
+      </li>
+      <li>
+        <div class="path">Log in with the account your administrator created,
+        pick a device name, and sync.</div>
+      </li>
+    </ol>
+    <p class="note">
+      There is nothing to browse here: this server has no web interface, no
+      public registration and no podcast directory. It speaks to your podcast
+      app, and to nothing else.
+    </p>
+  </section>
+
+  <section class="card">
+    <p class="eyebrow">What it keeps in sync</p>
+    <dl class="facts">
+      <dt>Subscriptions</dt>
+      <dd>Shared across all of an account's devices — a fresh install receives the full list.</dd>
+      <dt>Episodes</dt>
+      <dd>Listening positions and played state, resolved so the newest progress wins.</dd>
+      <dt>Your data</dt>
+      <dd>Stays on this server. Feeds are never fetched, visits are not tracked.</dd>
+    </dl>
+  </section>
+
+  <footer>
+    <span class="status" id="status">
+      <span class="light"></span>
+      <span class="mono" id="status-text">api: checking…</span>
+    </span>
+    <span class="spacer"></span>
+    <span>AGPL-3.0</span>
+    <a href="https://github.com/tvalverde/gpodsync">source</a>
+  </footer>
+</main>
+
+<script>
+  document.getElementById("host").textContent = location.host;
+  fetch("/healthz/", { cache: "no-store" })
+    .then(function (r) {
+      if (!r.ok) throw new Error();
+      document.getElementById("status").classList.add("ok");
+      document.getElementById("status-text").textContent = "api: answering";
+    })
+    .catch(function () {
+      document.getElementById("status-text").textContent = "api: unreachable";
+    });
+</script>
+</body>
+</html>

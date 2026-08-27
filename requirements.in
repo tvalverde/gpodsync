@@ -1,0 +1,17 @@
+# Runtime dependencies. Compile with: make lock
+#
+# Deliberately small. Every entry here ends up in a published image that other
+# people run, so each one is a thing we take responsibility for keeping patched.
+
+django>=6.1,<6.2
+
+# Brute-force lockout. Hand-rolling this was the alternative: an in-memory counter
+# loses its state on every restart, and the subtlety that matters here — locking on
+# username+IP rather than username alone, so an attacker cannot lock the account's
+# real owner out — is easy to get wrong once and never notice.
+django-axes>=8.3
+
+uvicorn>=0.52
+
+# Serves the admin's static files, and only matters when the admin is enabled.
+whitenoise>=6.12

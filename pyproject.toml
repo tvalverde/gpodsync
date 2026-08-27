@@ -1,0 +1,95 @@
+# Tool configuration only. This application is never built or installed as a
+# package — the image installs from requirements.txt — so there is deliberately no
+# [project] table to drift out of date. The version lives in the git tag.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = [
+    "--strict-markers",
+    "--tb=short",
+    "-ra",
+]
+markers = [
+    "unit: pure logic, no database, no HTTP, no Django (runs in milliseconds)",
+    "component: the Django application in-process, via the test client",
+    "acceptance: the fake AntennaPod against a running container over real HTTP",
+]
+DJANGO_SETTINGS_MODULE = "tests.settings"
+
+[tool.coverage.run]
+source = ["gpodsync"]
+omit = ["gpodsync/migrations/*"]
+# Line coverage alone only proves no line was skipped. Branch coverage forces both
+# sides of every condition, which is what makes the 100% gate on the domain layer
+# mean something rather than being a number to hit.
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+# Deliberately short. `pragma: no cover` is absent: on the domain layer it would be
+# a way to make the gate pass without covering the code, which defeats the gate.
+exclude_lines = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.mypy]
+python_version = "3.14"
+exclude = ["gpodsync/migrations/"]
+disallow_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+strict_equality = true
+
+plugins = ["mypy_django_plugin.main"]
+
+[tool.django-stubs]
+django_settings_module = "tests.settings"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "C4",       # comprehensions
+    "UP",       # pyupgrade
+    "ANN",      # annotations
+    "S",        # bandit — this is an internet-facing service
+    "DTZ",      # naive datetimes; the protocol is UTC-only and this catches drift
+    "RUF",
+]
+ignore = [
+    "E501",     # line length is the formatter's job
+    "ANN401",   # explicit Any is sometimes the honest annotation
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Test functions are fixtures returning None; annotating them tells a caller
+# nothing. S101 is assert, which is the entire point of a test file. S105-S107
+# are hardcoded credentials, which a test of credential handling cannot avoid
+# containing — the rule is looking for the real thing leaking into source, and
+# every one of these is fabricated.
+"tests/*" = ["ANN", "S101", "S105", "S106", "S107"]
+"gpodsync/migrations/*" = ["ANN", "RUF012"]
+# Django reads Meta.constraints, Meta.indexes and field choices as plain class
+# attributes. RUF012 wants ClassVar on each, which the framework neither needs
+# nor documents, and which would decorate every model in the project.
+"gpodsync/models.py" = ["RUF012"]
+# This file's entire job is to run docker commands. Every argument is a literal
+# or a name it generated itself, `docker` is found on PATH the way a person would
+# invoke it, and "/tmp" is a path inside the container rather than a host file.
+"tests/acceptance/containers.py" = ["S603", "S607", "S108"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["gpodsync"]
+
+[tool.ruff.format]
+quote-style = "double"

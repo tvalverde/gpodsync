@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#
+# The pre-commit hook runs before a message exists, and the tree scan CI runs
+# never sees one. Without this, a private hostname typed into a commit message
+# reaches the public repository with nothing having looked at it.
+
+set -uo pipefail
+
+message_file="$1"
+if [ -z "${AUDIT_FORBIDDEN_STRINGS:-}" ] && [ -f .env.deploy ]; then
+    # shellcheck disable=SC1091
+    . ./.env.deploy
+fi
+[ -z "${AUDIT_FORBIDDEN_STRINGS:-}" ] && exit 0
+
+patterns=$(mktemp)
+trap 'rm -f "$patterns"' EXIT
+printf '%s\n' "$AUDIT_FORBIDDEN_STRINGS" | tr -d '\r' | grep -v '^[[:space:]]*$' >"$patterns"
+
+if grep -qiFf "$patterns" "$message_file"; then
+    index=0
+    while IFS= read -r pattern; do
+        index=$((index + 1))
+        grep -qiF -- "$pattern" "$message_file" \
+            && echo "commit-msg: the message contains forbidden pattern #$index"
+    done <"$patterns"
+    echo "commit-msg: refusing the commit. The message is as permanent as the diff."
+    exit 1
+fi
