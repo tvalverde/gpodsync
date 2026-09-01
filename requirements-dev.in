@@ -14,7 +14,7 @@ coverage>=7.15
 mypy>=2.3
 django-stubs>=6.1
 
-ruff>=0.16
+ruff>=0.16.5
 
 # Drives the fake AntennaPod used by the acceptance suite. Its cookie handling is
 # replaced with a stricter policy that mirrors the Java client's, so this is only
