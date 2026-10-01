@@ -3,7 +3,7 @@
 # Deliberately small. Every entry here ends up in a published image that other
 # people run, so each one is a thing we take responsibility for keeping patched.
 
-django>=6.1,<6.2
+django>=6.1.1,<6.2
 
 # Brute-force lockout. Hand-rolling this was the alternative: an in-memory counter
 # loses its state on every restart, and the subtlety that matters here — locking on
