@@ -12,7 +12,7 @@ pytest-cov>=7.1
 coverage>=7.15
 
 mypy>=2.3
-django-stubs>=6.1
+django-stubs>=6.1.1
 
 ruff>=0.16
 
