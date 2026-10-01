@@ -250,7 +250,7 @@ click==8.5.0 \
     # via
     #   -c requirements.txt
     #   uvicorn
-coverage==7.15.4 \
+coverage[toml]==7.15.4 \
     --hash=sha256:002a438859f7b430bc99afeaf01a6d187dad1d0dc907b64cdeffc632a5db8fd8 \
     --hash=sha256:050467a7983b8e2fe7dd41a78bb30c3e7f8c0b8cafda14b1c46f8b5e3cf2dd3c \
     --hash=sha256:050f66a08805acb5b8a23c6d4a517b1ecf82c08e81ed0e4bd727df065e5c6624 \
@@ -390,9 +390,9 @@ django-axes==8.3.1 \
     # via
     #   -c requirements.txt
     #   -r requirements.in
-django-stubs==6.1.0 \
-    --hash=sha256:63b23ccca2616d464ed7e37d1ce44960315cb3cecab75b23c928467ef125e560 \
-    --hash=sha256:b6aecc5c738a103135f76ba160a6f75e3b27dcf0200c64d7226018cdbc2340dd
+django-stubs==6.1.1 \
+    --hash=sha256:291fd79197416d191ec9f4e443bc6800b64dd5d41e476b91e679495d005f3d61 \
+    --hash=sha256:a913d0c35242cd820f638486118fd542d687b6a85104bea9cb7e635b52b889e3
     # via -r requirements-dev.in
 django-stubs-ext==6.1.0 \
     --hash=sha256:57273506823274700a707c8f404dfb52a12c4554daf1468dfb2bff857bb22074 \
