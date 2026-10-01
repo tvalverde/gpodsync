@@ -11,7 +11,7 @@ django>=6.1,<6.2
 # real owner out — is easy to get wrong once and never notice.
 django-axes>=8.3
 
-uvicorn>=0.52
+uvicorn>=0.54.0
 
 # Serves the admin's static files, and only matters when the admin is enabled.
 whitenoise>=6.12
