@@ -1,6 +1,6 @@
 # Pinned by digest as well as tag. A tag can be moved; a digest cannot, and this
 # image is published for other people to run.
-FROM python:3.14-alpine@sha256:601e99e090cb08c2784a42395487709500bc39930307fe72f3f11a8f3c430762 AS builder
+FROM python:3.14-alpine@sha256:5862d971d1f0ae26b258cefa4e893556b1d3aba81bd2ff30888704ad378bab67 AS builder
 
 # --require-hashes is the point of the lock file. Version pins alone say which
 # release was intended; hashes say the bytes are the ones that were reviewed.
@@ -12,7 +12,7 @@ RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip uninstall -y pip setuptools 2>/dev/null || true
 
 
-FROM python:3.14-alpine@sha256:601e99e090cb08c2784a42395487709500bc39930307fe72f3f11a8f3c430762
+FROM python:3.14-alpine@sha256:5862d971d1f0ae26b258cefa4e893556b1d3aba81bd2ff30888704ad378bab67
 
 LABEL org.opencontainers.image.title="gpodsync" \
       org.opencontainers.image.description="A self-hosted podcast sync server that AntennaPod actually works with" \
